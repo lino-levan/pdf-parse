@@ -47,62 +47,62 @@ export default async function parsePdf<T extends boolean = false>(
     verbosity: 0,
   }).promise;
 
-  const { metadata, info } = await doc.getMetadata().catch(() => {
-    return { metadata: null, info: null };
-  });
+  try {
+    const { metadata, info } = await doc.getMetadata().catch(() => {
+      return { metadata: null, info: null };
+    });
 
-  const annotations: Annotation[] = [];
-  const pagePromises = [];
-  const iteratedPageCount = Math.min(
-    options?.maxPages ?? Infinity,
-    doc.numPages,
-  );
-  for (let i = 1; i <= iteratedPageCount; i++) {
-    pagePromises.push((async () => {
-      try {
-        const pageProxy = await doc.getPage(i);
-        const textContent = await pageProxy.getTextContent();
+    const annotations: Annotation[] = [];
+    const pagePromises = [];
+    const iteratedPageCount = Math.min(
+      options?.maxPages ?? Infinity,
+      doc.numPages,
+    );
+    for (let i = 1; i <= iteratedPageCount; i++) {
+      pagePromises.push((async () => {
+        try {
+          const pageProxy = await doc.getPage(i);
+          const textContent = await pageProxy.getTextContent();
 
-        if (options?.includeAnnotations) {
-          const pageAnnotations = await pageProxy.getAnnotations();
-          for (const annotation of pageAnnotations) {
-            annotations.push({
-              url: annotation.url,
-            });
+          if (options?.includeAnnotations) {
+            const pageAnnotations = await pageProxy.getAnnotations();
+            for (const annotation of pageAnnotations) {
+              annotations.push({
+                url: annotation.url,
+              });
+            }
           }
-        }
-        let text = "";
-        let lastY: number | undefined;
-        for (const item of textContent.items) {
-          if (lastY == item.transform[5] || !lastY) {
-            text += item.str;
-          } else {
-            text += "\n" + item.str;
+          let text = "";
+          let lastY: number | undefined;
+          for (const item of textContent.items) {
+            if (lastY == item.transform[5] || !lastY) {
+              text += item.str;
+            } else {
+              text += "\n" + item.str;
+            }
+            lastY = item.transform[5];
           }
-          lastY = item.transform[5];
-        }
 
-        return text;
-      } catch {
-        return "";
-      }
-    })());
+          return text;
+        } catch {
+          return "";
+        }
+      })());
+    }
+
+    const pageTexts = await Promise.all(pagePromises);
+
+    return {
+      numPages: doc.numPages,
+      info,
+      metadata,
+      text: pageTexts,
+      annotations:
+        (options?.includeAnnotations ? annotations : undefined) as T extends
+          true ? Annotation[]
+          : undefined,
+    };
+  } finally {
+    await doc.destroy();
   }
-
-  // if (options?.includeAnnotations) {
-  //   pagePromises.push(
-  // }
-
-  const pageTexts = await Promise.all(pagePromises);
-
-  return {
-    numPages: doc.numPages,
-    info,
-    metadata,
-    text: pageTexts,
-    annotations:
-      (options?.includeAnnotations ? annotations : undefined) as T extends true
-        ? Annotation[]
-        : undefined,
-  };
 }

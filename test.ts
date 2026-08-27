@@ -209,6 +209,29 @@ Deno.test("Parse local PDF should work", async () => {
   });
 });
 
+Deno.test("Parse local PDF should work including page sizes", async () => {
+  const { pageSizes: omitted } = await parsePdf(
+    Deno.readFileSync(
+      new URL(import.meta.resolve("./test_data/Hyphenator.pdf")),
+    ),
+  );
+
+  assertEquals(omitted, undefined);
+
+  const { pageSizes, text } = await parsePdf(
+    Deno.readFileSync(
+      new URL(import.meta.resolve("./test_data/Hyphenator.pdf")),
+    ),
+    { includePageSizes: true },
+  );
+
+  assertEquals(pageSizes, [
+    { width: 595, height: 842 },
+    { width: 595, height: 842 },
+  ]);
+  assertEquals(pageSizes.length, text.length);
+});
+
 Deno.test("Parse local PDF should work including annotations", async () => {
   const { annotations } = await parsePdf(
     Deno.readFileSync(

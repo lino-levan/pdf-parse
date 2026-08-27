@@ -5,14 +5,21 @@ export interface Annotation {
   url?: string;
 }
 
+/** Page size in points, with page rotation applied. */
+export interface PageSize {
+  width: number;
+  height: number;
+}
+
 /** The parsed pdf object which has a number of pages, the raw pdf info, the pdf metadata, and the text from the pdf */
-export interface ParsedPdf<T = false> {
+export interface ParsedPdf<T = false, S = false> {
   numPages: number;
   info: object | null;
   metadata: Metadata | null;
   /** Text, split by page of PDF */
   text: string[];
   annotations: T extends true ? Annotation[] : undefined;
+  pageSizes: S extends true ? (PageSize | null)[] : undefined;
 }
 
 type TypedArray =
@@ -33,10 +40,17 @@ type TypedArray =
  * @param options.maxPages - Maximum number of pages to process (defaults to all pages)
  * @returns Promise that resolves to ParsedPdf object containing pages count, info, metadata, and extracted text
  */
-export default async function parsePdf<T extends boolean = false>(
+export default async function parsePdf<
+  T extends boolean = false,
+  S extends boolean = false,
+>(
   rawDoc: ArrayBuffer | TypedArray | string | URL,
-  options?: { maxPages?: number; includeAnnotations?: T },
-): Promise<ParsedPdf<T>> {
+  options?: {
+    maxPages?: number;
+    includeAnnotations?: T;
+    includePageSizes?: S;
+  },
+): Promise<ParsedPdf<T, S>> {
   const doc = await getDocument({
     url: typeof rawDoc === "string" || rawDoc instanceof URL
       ? rawDoc
@@ -83,24 +97,34 @@ export default async function parsePdf<T extends boolean = false>(
             lastY = item.transform[5];
           }
 
-          return text;
+          if (!options?.includePageSizes) return { text, size: null };
+
+          const { width, height } = pageProxy.getViewport({
+            scale: pageProxy.userUnit,
+          });
+          return { text, size: { width, height } };
         } catch {
-          return "";
+          return { text: "", size: null };
         }
       })());
     }
 
-    const pageTexts = await Promise.all(pagePromises);
+    const pages = await Promise.all(pagePromises);
 
     return {
       numPages: doc.numPages,
       info,
       metadata,
-      text: pageTexts,
+      text: pages.map((page) => page.text),
       annotations:
         (options?.includeAnnotations ? annotations : undefined) as T extends
           true ? Annotation[]
           : undefined,
+      pageSizes: (options?.includePageSizes
+        ? pages.map((page) =>
+          page.size
+        )
+        : undefined) as S extends true ? (PageSize | null)[] : undefined,
     };
   } finally {
     await doc.destroy();
